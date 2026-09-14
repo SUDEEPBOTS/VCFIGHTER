@@ -55,11 +55,28 @@ async def init():
     from VCFIGHTERS.core.userbot import userbot_manager
     try:
         sessions = await get_all_sessions()
+        if not sessions and getattr(Config, "STARTUP_SESSIONS", None):
+            LOGGER("Userbots").info("Loading STARTUP_SESSIONS from Config...")
+            sessions = Config.STARTUP_SESSIONS
+            from VCFIGHTERS.database.mangodb import add_userbot
+            import time
+            for s in sessions:
+                try:
+                    await add_userbot({
+                        "session_string": s,
+                        "phone": "startup_session",
+                        "added_by": Config.OWNER_ID,
+                        "added_at": int(time.time()),
+                        "active": True,
+                    })
+                except Exception:
+                    pass
+
         if sessions:
             await userbot_manager.start_all(sessions)
             LOGGER("Userbots").info(f"{len(sessions)} userbot(s) started")
         else:
-            LOGGER("Userbots").warning("No userbots in DB.")
+            LOGGER("Userbots").warning("No userbots in DB or STARTUP_SESSIONS.")
     except Exception as e:
         LOGGER("Userbots").error(f"Userbot error: {e}")
 

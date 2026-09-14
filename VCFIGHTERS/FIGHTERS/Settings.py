@@ -410,9 +410,14 @@ async def _save_manual_session(client, msg_or_query, session: str, user_id: int)
 
     try:
         from VCFIGHTERS.core.userbot import userbot_manager
-        await userbot_manager.start_userbot(session)
+        ub_client = await userbot_manager.start_userbot(session)
+        if ub_client:
+            from VCFIGHTERS.core.call import vc
+            await vc.add_userbot(session, ub_client)
+            from VCFIGHTERS.FIGHTERS.Voice import register_participant_handlers
+            await register_participant_handlers()
     except Exception as e:
-        log.warning(f"DB saved but client failed to start: {e}")
+        log.warning(f"DB saved but client/PyTgCalls failed to start: {e}")
 
     ok = f"✅ ᴜsєʀʙᴏᴛ `{phone}` ᴀᴅᴅєᴅ & sᴛᴀʀᴛєᴅ!"
     if isinstance(msg_or_query, Message):
@@ -443,6 +448,8 @@ async def cb_ub_del(client: Client, query: CallbackQuery):
     try:
         from VCFIGHTERS.core.userbot import userbot_manager
         await userbot_manager.stop_userbot(ub["session_string"])
+        from VCFIGHTERS.core.call import vc
+        vc.remove_userbot(ub["session_string"])
     except Exception:
         pass
     await query.answer(f"🗑️ {ub.get('phone','?')} ᴅєʟєᴛєᴅ.", show_alert=False)
@@ -460,6 +467,8 @@ async def cb_ub_delall(client: Client, query: CallbackQuery):
     try:
         from VCFIGHTERS.core.userbot import userbot_manager
         await userbot_manager.stop_all()
+        from VCFIGHTERS.core.call import vc
+        await vc.stop_all()
     except Exception:
         pass
     await query.answer("🗑️ sᴀʙ ᴜsєʀʙᴏᴛs ᴅєʟєᴛє нᴏ ɢᴀʏє.", show_alert=True)

@@ -137,6 +137,9 @@ async def _stop_recording(user_id: int) -> Optional[str]:
 #  AUTO MODE — PARTICIPANT MONITOR
 # ══════════════════════════════════════════════════════════════
 
+_registered_participant_sessions: set[str] = set()
+
+
 async def register_participant_handlers():
     from pytgcalls import filters as call_filters
     from pytgcalls.types import Update
@@ -145,44 +148,57 @@ async def register_participant_handlers():
         log.warning("⚠️ No PyTgCalls instances — participant handlers NOT registered")
         return
 
-    for session, pytg in vc._instances.items():
+    for session, pytg in list(vc._instances.items()):
+        if session in _registered_participant_sessions:
+            continue
 
-        @pytg.on_update(call_filters.participants_change)
-        async def _on_participant_change(_, update: Update):
+        @pytg.on_update(call_filters.call_participant())
+        async def _on_participant_change(call_client, update: Update):
             mode = await get_mode()
             if mode != "auto":
                 return
 
-            for participant in update.participants:
-                uid = participant.user_id
-                if not (is_owner(uid) or await is_sudo(uid)):
-                    continue
+            participant = getattr(update, "participant", None)
+            if not participant:
+                return
 
-                chat_id       = update.chat_id
-                is_muted      = participant.muted
-                track         = _auto_tracking.get(uid, {})
-                was_recording = track.get("recording", False)
+            uid = getattr(participant, "user_id", None)
+            if not uid or not (is_owner(uid) or await is_sudo(uid)):
+                return
 
-                if not is_muted and not was_recording:
-                    log.info(f"🎙️ {uid} mic ON → recording start")
-                    _cleanup_old_recording(uid)
-                    await _start_recording(uid, chat_id)
+            chat_id       = update.chat_id
+            is_muted      = getattr(participant, "muted", True)
+            track         = _auto_tracking.get(uid, {})
+            was_recording = track.get("recording", False)
 
-                elif is_muted and was_recording:
-                    log.info(f"🔇 {uid} mic OFF → playing recording")
-                    rec_path = await _stop_recording(uid)
-                    if not rec_path:
-                        log.warning("⚠️ Recording empty, skipping")
-                        return
+            if not is_muted and not was_recording:
+                log.info(f"🎙️ {uid} mic ON → recording start")
+                _cleanup_old_recording(uid)
+                await _start_recording(uid, chat_id)
 
-                    screen_sharing = any(
-                        p.video_stopped is False
-                        for p in update.participants
-                        if p.user_id != uid
-                    )
-                    await vc.play_loop(chat_id=chat_id, file_path=rec_path, is_video=screen_sharing)
-                    log.info(f"{'📺 video+audio' if screen_sharing else '🔊 audio'} loop → chat {chat_id}")
+            elif is_muted and was_recording:
+                log.info(f"🔇 {uid} mic OFF → playing recording")
+                rec_path = await _stop_recording(uid)
+                if not rec_path:
+                    log.warning("⚠️ Recording empty, skipping")
+                    return
 
+                screen_sharing = False
+                try:
+                    participants = await call_client.get_participants(chat_id)
+                    if participants:
+                        screen_sharing = any(
+                            (getattr(p, "screen_sharing", False) or getattr(p, "video", False))
+                            for p in participants
+                            if getattr(p, "user_id", None) != uid
+                        )
+                except Exception:
+                    pass
+
+                await vc.play_loop(chat_id=chat_id, file_path=rec_path, is_video=screen_sharing)
+                log.info(f"{'📺 video+audio' if screen_sharing else '🔊 audio'} loop → chat {chat_id}")
+
+        _registered_participant_sessions.add(session)
         log.info(f"✅ Participant handler registered → ...{session[-10:]}")
 
 

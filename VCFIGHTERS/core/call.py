@@ -1,4 +1,5 @@
 import asyncio
+import os
 import subprocess
 from typing import Optional
 
@@ -112,11 +113,11 @@ class VCCall:
 
         pytg = PyTgCalls(client)
 
-        # ── py-tgcalls 2.1.1 stream end handler ──
-        @pytg.on_update()
+        # ── py-tgcalls 2.x stream end handler ──
+        from pytgcalls import filters as call_filters
+
+        @pytg.on_update(call_filters.stream_end())
         async def _on_stream_end(_, update):
-            from pytgcalls.types import StreamEnded
-            if not isinstance(update, StreamEnded): return
             chat_id   = update.chat_id
             loop_info = self._loop_data.get(chat_id)
 
@@ -163,13 +164,20 @@ class VCCall:
 
         pytg_cfg      = await get_pytgcalls_settings()
         quality_str   = pytg_cfg.get("quality", "medium")
-        audio_quality = AudioQuality.STUDIO
+        qual_map = {
+            "low":    AudioQuality.LOW,
+            "medium": AudioQuality.MEDIUM,
+            "high":   AudioQuality.HIGH,
+            "studio": AudioQuality.STUDIO,
+        }
+        audio_quality = qual_map.get(str(quality_str).lower(), AudioQuality.STUDIO)
 
         try:
-            if is_video:
+            video_file = "VCFIGHTERS/Assists/screen-20260507-153325.mp4"
+            if is_video and os.path.exists(video_file):
                 stream = MediaStream(
+                    media_path       = video_file,
                     audio_path       = processed,
-                    video_path       = "VCFIGHTERS/Assists/screen-20260507-153325.mp4",
                     audio_parameters = audio_quality,
                     video_parameters = VideoQuality.HD_720p,
                 )
@@ -177,6 +185,7 @@ class VCCall:
                 stream = MediaStream(
                     media_path       = processed,
                     audio_parameters = audio_quality,
+                    video_flags      = MediaStream.Flags.IGNORE,
                 )
 
             await pytg.play(chat_id, stream)
