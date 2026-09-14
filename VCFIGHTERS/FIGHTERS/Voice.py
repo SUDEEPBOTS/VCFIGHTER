@@ -4,6 +4,7 @@ import time
 from typing import Optional
 
 from pyrogram import filters as pyro_filters
+from pyrogram.enums import ChatType
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from VCFIGHTERS.core.bot import app
@@ -104,7 +105,8 @@ async def vc_join_ready() -> tuple[bool, str]:
         log.info(f"📡 Userbot joined VC → chat {chat_id} | audio: {ready_audio}")
         return True, "✅ ᴜsєʀʙᴏᴛ ᴊᴏιη нᴏ ɢᴀʏᴀ ᴠᴄ ϻєιη!\n🎙️ ᴀʙ ᴀᴜᴛᴏ ϻᴏᴅє ϻιᴄ sᴜηєɢᴀ."
     else:
-        return False, "❌ ᴠᴄ ϻєιη ᴊᴏιη ηᴀнιιη нᴏ sᴋᴀ. ᴄнєᴄᴋ ᴋᴀʀᴏ ᴋι ᴜsєʀʙᴏᴛ ᴀᴄᴛιᴠє нᴀι."
+        err = getattr(vc, "_last_error", "") or "ᴄнєᴄᴋ ᴋᴀʀᴏ ᴋι ᴜsєʀʙᴏᴛ ᴀᴄᴛιᴠє нᴀι"
+        return False, f"❌ ᴠᴄ ϻєιη ᴊᴏιη ηᴀнιιη нᴏ sᴋᴀ.\n⚠️ `{err}`"
 
 
 # ══════════════════════════════════════════════════════════════
@@ -238,6 +240,9 @@ async def _handle_dm_play(client, message: Message, uid: int):
     elif message.audio:
         fname = getattr(message.audio, "file_name", None) or "audio.mp3"
         ext   = fname.rsplit(".", 1)[-1] if "." in fname else "mp3"
+    elif message.document:
+        fname = getattr(message.document, "file_name", None) or "audio.mp3"
+        ext   = fname.rsplit(".", 1)[-1] if "." in fname else "mp3"
     else:
         ext = "mp3"
 
@@ -285,7 +290,8 @@ async def _handle_dm_play(client, message: Message, uid: int):
             reply_markup=_dm_stop_kb(chat_id),
         )
     else:
-        await status_msg.edit("❌ **ғᴀιʟєᴅ ᴛᴏ ρʟᴀʏ.** ᴄнєᴄᴋ ιғ ᴠᴄ ιs ᴀᴄᴛιᴠє.")
+        err = getattr(vc, "_last_error", "") or "ᴄнєᴄᴋ ιғ ᴠᴄ ιs ᴀᴄᴛιᴠє"
+        await status_msg.edit(f"❌ **ғᴀιʟєᴅ ᴛᴏ ρʟᴀʏ.**\n⚠️ `{err}`")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -459,7 +465,7 @@ async def vcoff_handler(client, message: Message):
     uid = message.from_user.id
     if not await is_authorized(uid):
         return
-    if message.chat.type in ("group", "supergroup"):
+    if message.chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
         chat_id = message.chat.id
     else:
         target = await get_primary_target()
@@ -484,8 +490,11 @@ async def pause_handler(client, message: Message):
     uid = message.from_user.id
     if not await is_authorized(uid):
         return
-    await vc.stop(message.chat.id, leave_vc=False)
-    await message.reply("⏸️ **ρᴀᴜsєᴅ.** ᴜsє `/resume` ᴛᴏ ᴄᴏηᴛιηᴜє.")
+    if await vc.pause(message.chat.id):
+        await message.reply("⏸️ **ρᴀᴜsєᴅ.** ᴜsє `/resume` ᴛᴏ ᴄᴏηᴛιηᴜє.")
+    else:
+        await vc.stop(message.chat.id, leave_vc=False)
+        await message.reply("⏸️ **ρᴀᴜsєᴅ.** ᴜsє `/resume` ᴛᴏ ᴄᴏηᴛιηᴜє.")
 
 
 @app.on_message(pyro_filters.command("resume") & pyro_filters.group)
@@ -494,7 +503,10 @@ async def resume_handler(client, message: Message):
     if not await is_authorized(uid):
         return
     chat_id = message.chat.id
-    file    = _dm_current.get(chat_id)
+    if await vc.resume(chat_id):
+        await message.reply("▶️ **ʀєsᴜϻєᴅ!**")
+        return
+    file = _dm_current.get(chat_id)
     if not file or not os.path.exists(file):
         await message.reply("⚠️ ηᴏᴛнιηɢ ᴛᴏ ʀєsᴜϻє. sєηᴅ ᴀη ᴀᴜᴅιᴏ ғιʟє ғιʀsᴛ.")
         return

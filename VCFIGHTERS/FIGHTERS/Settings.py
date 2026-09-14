@@ -3,6 +3,7 @@ import time
 
 from pyrogram import Client
 from pyrogram import filters as pyro_filters
+from pyrogram.errors import MessageNotModified, UserAlreadyParticipant
 from pyrogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -244,16 +245,19 @@ async def cb_auto_ready(client: Client, query: CallbackQuery):
     await query.answer("⏳ ᴊᴏιη ᴋʀ ʀᴀнᴀ нᴜη...", show_alert=False)
     from VCFIGHTERS.FIGHTERS.Voice import vc_join_ready
     success, msg = await vc_join_ready()
-    await query.edit_message_text(
-        msg,
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("🟢 ᴏη",    callback_data="cfg_auto_on"),
-                InlineKeyboardButton("📡 ʀєᴀᴅʏ", callback_data="cfg_auto_ready"),
-            ],
-            [InlineKeyboardButton("˹ ◀️ 𝐁ᴀᴄᴋ ˼", callback_data="cfg_mode")],
-        ]),
-    )
+    try:
+        await query.edit_message_text(
+            msg,
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("🟢 ᴏη",    callback_data="cfg_auto_on"),
+                    InlineKeyboardButton("📡 ʀєᴀᴅʏ", callback_data="cfg_auto_ready"),
+                ],
+                [InlineKeyboardButton("˹ ◀️ 𝐁ᴀᴄᴋ ˼", callback_data="cfg_mode")],
+            ]),
+        )
+    except MessageNotModified:
+        pass
 
 
 # ══════════════════════════════════════════════════════════════
@@ -486,51 +490,54 @@ async def cb_target(client: Client, query: CallbackQuery):
         await query.answer("⛔ 𝚫ᴄᴄєss ᴅєηιєᴅ", show_alert=True)
         return
     targets = await get_all_targets()
-    await _show_targets(query, targets, page=0, ask_new=True)
+    await _show_targets(query, targets, page=0, ask_new=not bool(targets))
 
 
 async def _show_targets(query: CallbackQuery, targets: list, page: int, ask_new: bool = False):
-    if not targets or ask_new:
-        set_state(query.from_user.id, "await_target_link")
-        await query.edit_message_text(
-            "🎯 **ᴛᴀʀɢєᴛ sєᴛ ᴋᴀʀᴏ**\n\n"
-            "ɢʀᴏᴜρ ιηᴠιᴛє ʟιηᴋ ʙнєᴊᴏ:\n`t.me/+xxxx`",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("˹ ◀️ 𝐁ᴀᴄᴋ ˼", callback_data="config_main")]
-            ]),
+    try:
+        if not targets or ask_new:
+            set_state(query.from_user.id, "await_target_link")
+            await query.edit_message_text(
+                "🎯 **ᴛᴀʀɢєᴛ sєᴛ ᴋᴀʀᴏ**\n\n"
+                "ɢʀᴏᴜρ ιηᴠιᴛє ʟιηᴋ, ᴜsєʀηᴀϻє ʏᴀ ᴄнᴀᴛ ιᴅ ʙнєᴊᴏ:\n`t.me/+xxxx`",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("˹ ◀️ 𝐁ᴀᴄᴋ ˼", callback_data="config_main")]
+                ]),
+            )
+            return
+
+        total  = len(targets)
+        page   = max(0, min(page, total - 1))
+        t      = targets[page]
+        chat   = t.get("chat_id", "N/A")
+        link   = t.get("invite_link", "")
+        joined = len(t.get("userbots_joined", []))
+
+        text = (
+            f"🎯 **ᴛᴀʀɢєᴛ ρᴀηєʟ**\n\n"
+            f"ᴄнᴀᴛ ιᴅ: `{chat}`\n"
+            f"ʟιηᴋ: {link}\n"
+            f"ᴜsєʀʙᴏᴛs ᴊᴏιηєᴅ: **{joined}**"
         )
-        return
 
-    total  = len(targets)
-    page   = max(0, min(page, total - 1))
-    t      = targets[page]
-    chat   = t.get("chat_id", "N/A")
-    link   = t.get("invite_link", "")
-    joined = len(t.get("userbots_joined", []))
+        nav = []
+        if total > 1:
+            nav = [
+                InlineKeyboardButton("˹ ◀️ ρʀєᴠ ˼", callback_data=f"cfg_tgt_page_{(page-1)%total}"),
+                InlineKeyboardButton(f"{page+1}/{total}", callback_data="noop"),
+                InlineKeyboardButton("˹ ηєxᴛ ▶️ ˼", callback_data=f"cfg_tgt_page_{(page+1)%total}"),
+            ]
 
-    text = (
-        f"🎯 **ᴛᴀʀɢєᴛ ρᴀηєʟ**\n\n"
-        f"ᴄнᴀᴛ ιᴅ: `{chat}`\n"
-        f"ʟιηᴋ: {link}\n"
-        f"ᴜsєʀʙᴏᴛs ᴊᴏιηєᴅ: **{joined}**"
-    )
-
-    nav = []
-    if total > 1:
-        nav = [
-            InlineKeyboardButton("˹ ◀️ ρʀєᴠ ˼", callback_data=f"cfg_tgt_page_{(page-1)%total}"),
-            InlineKeyboardButton(f"{page+1}/{total}", callback_data="noop"),
-            InlineKeyboardButton("˹ ηєxᴛ ▶️ ˼", callback_data=f"cfg_tgt_page_{(page+1)%total}"),
+        rows = []
+        if nav:
+            rows.append(nav)
+        rows += [
+            [InlineKeyboardButton("˹ sєᴛ ʟιηᴋ ˼",    callback_data="cfg_target_new")],
+            [InlineKeyboardButton("˹ ◀️ 𝐁ᴀᴄᴋ ˼", callback_data="config_main")],
         ]
-
-    rows = []
-    if nav:
-        rows.append(nav)
-    rows += [
-        [InlineKeyboardButton("˹ sєᴛ ʟιηᴋ ˼",    callback_data="cfg_target_new")],
-        [InlineKeyboardButton("˹ ◀️ 𝐁ᴀᴄᴋ ˼", callback_data="config_main")],
-    ]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(rows))
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(rows))
+    except MessageNotModified:
+        pass
 
 
 @app.on_callback_query(pyro_filters.regex(r"^cfg_tgt_page_(\d+)$"))
@@ -753,14 +760,42 @@ async def conversation_handler(client: Client, message: Message):
         phone = state.get("phone")
         hash_ = state.get("phone_code_hash")
         tmp   = state.get("tmp")
+        from pyrogram.errors import SessionPasswordNeeded
         try:
             await tmp.sign_in(phone, hash_, otp)
             session = await tmp.export_session_string()
-            await tmp.stop()
+            try:
+                await tmp.disconnect()
+            except Exception:
+                pass
+            clear_state(uid)
+            await _save_manual_session(client, message, session, uid)
+        except SessionPasswordNeeded:
+            set_state(uid, "await_2fa", phone=phone, tmp=tmp)
+            await message.reply(
+                "🔐 **2FA Password Required!**\n\nApna Two-Factor Authentication password bhejo:",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("˹ ◀️ ᴄᴀηᴄєʟ ˼", callback_data="config_main")]
+                ]),
+            )
+        except Exception as e:
+            await message.reply(f"❌ OTP ɢʟᴀᴛ нᴀι: `{e}`\nᴅᴏʙᴀʀᴀ ʙнєᴊᴏ:")
+
+    # ── 2FA Password ─────────────────────────────────────────
+    elif step == "await_2fa":
+        password = message.text.strip()
+        tmp      = state.get("tmp")
+        try:
+            await tmp.check_password(password)
+            session = await tmp.export_session_string()
+            try:
+                await tmp.disconnect()
+            except Exception:
+                pass
             clear_state(uid)
             await _save_manual_session(client, message, session, uid)
         except Exception as e:
-            await message.reply(f"❌ OTP ɢʟᴀᴛ нᴀι: `{e}`\nᴅᴏʙᴀʀᴀ ʙнєᴊᴏ:")
+            await message.reply(f"❌ Password ɢʟᴀᴛ нᴀι: `{e}`\nᴅᴏʙᴀʀᴀ ʙнєᴊᴏ:")
 
     # ── Manual session ───────────────────────────────────────
     elif step == "await_session_string":
@@ -771,24 +806,74 @@ async def conversation_handler(client: Client, message: Message):
     # ── Target link ──────────────────────────────────────────
     elif step == "await_target_link":
         link = message.text.strip()
-        if "t.me/+" not in link and "joinchat" not in link:
-            await message.reply("❌ ιηᴠᴀʟιᴅ ʟιηᴋ. ᴠᴀʟιᴅ ιηᴠιᴛє ʟιηᴋ ʙнєᴊᴏ.")
-            return
         clear_state(uid)
         status_msg = await message.reply("⏳ sᴀʙ ᴜsєʀʙᴏᴛs sє ᴊᴏιη ᴋʀ ʀᴀнᴀ нᴜη...")
 
         userbots = await get_all_userbots()
+        if not userbots:
+            try:
+                await status_msg.edit(
+                    "⚠️ **ᴋᴏι ᴜsєʀʙᴏᴛ ᴀᴅᴅ ηᴀнιιη нᴀι!**\n"
+                    "`/config` → `˹ 𝐔sєʀʙᴏᴛs ˼` sє ρнʟє sєssιᴏη ᴀᴅᴅ ᴋᴀʀᴏ.",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("˹ ◀️ 𝐁ᴀᴄᴋ ˼", callback_data="config_main")]
+                    ]),
+                )
+            except MessageNotModified:
+                pass
+            return
+
         joined   = []
         chat_id  = None
+
+        target_input = link
+        if target_input.startswith("-100") and target_input[1:].isdigit():
+            target_input = int(target_input)
+        elif target_input.lstrip("-").isdigit():
+            target_input = int(target_input)
 
         from VCFIGHTERS.core.userbot import userbot_manager
         for ub in userbots:
             try:
                 ub_client = userbot_manager.get_client(ub["session_string"])
-                chat      = await ub_client.join_chat(link)
-                chat_id   = chat.id
-                joined.append(ub.get("phone", "?"))
-                await asyncio.sleep(3)
+                if not ub_client:
+                    continue
+
+                chat = None
+                try:
+                    chat = await ub_client.join_chat(target_input)
+                except UserAlreadyParticipant:
+                    try:
+                        chat = await ub_client.get_chat(target_input)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    try:
+                        chat = await ub_client.get_chat(target_input)
+                    except Exception:
+                        log.warning(f"Join attempt error {ub.get('phone')}: {e}")
+
+                if chat:
+                    chat_id = chat.id
+                    joined.append(ub.get("phone", "?"))
+                elif not chat_id and isinstance(target_input, str):
+                    match = getattr(ub_client, "INVITE_LINK_RE", None)
+                    m = match.match(target_input) if match else None
+                    if m:
+                        from pyrogram import raw, utils
+                        try:
+                            res = await ub_client.invoke(raw.functions.messages.CheckChatInvite(hash=m.group(1)))
+                            raw_chat = getattr(res, "chat", None)
+                            if raw_chat:
+                                if isinstance(raw_chat, raw.types.Channel):
+                                    chat_id = utils.get_channel_id(raw_chat.id)
+                                elif isinstance(raw_chat, raw.types.Chat):
+                                    chat_id = -raw_chat.id
+                                joined.append(ub.get("phone", "?"))
+                        except Exception as e2:
+                            log.warning(f"CheckChatInvite error {ub.get('phone')}: {e2}")
+
+                await asyncio.sleep(2)
             except Exception as e:
                 log.warning(f"Join failed {ub.get('phone')}: {e}")
 
@@ -799,12 +884,18 @@ async def conversation_handler(client: Client, message: Message):
                 "userbots_joined": joined,
                 "added_at":        int(time.time()),
             })
-            await status_msg.edit(
-                f"✅ **{len(joined)} ᴜsєʀʙᴏᴛs ᴊᴏιη нᴏ ɢᴀʏє**\n"
-                f"🎯 ᴛᴀʀɢєᴛ sᴀᴠєᴅ: `{chat_id}`",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("˹ ◀️ 𝐁ᴀᴄᴋ ˼", callback_data="config_main")]
-                ]),
-            )
+            try:
+                await status_msg.edit(
+                    f"✅ **{len(joined)} ᴜsєʀʙᴏᴛs ᴊᴏιη нᴏ ɢᴀʏє**\n"
+                    f"🎯 ᴛᴀʀɢєᴛ sᴀᴠєᴅ: `{chat_id}`",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("˹ ◀️ 𝐁ᴀᴄᴋ ˼", callback_data="config_main")]
+                    ]),
+                )
+            except MessageNotModified:
+                pass
         else:
-            await status_msg.edit("❌ ᴋᴏι ʙнι ᴜsєʀʙᴏᴛ ᴊᴏιη ηᴀнι ᴋʀ sᴋᴀ. ʟιηᴋ ᴄнєᴄᴋ ᴋᴀʀᴏ.")
+            try:
+                await status_msg.edit("❌ ᴋᴏι ʙнι ᴜsєʀʙᴏᴛ ᴊᴏιη ηᴀнι ᴋʀ sᴋᴀ. ʟιηᴋ ᴄнєᴄᴋ ᴋᴀʀᴏ.")
+            except MessageNotModified:
+                pass

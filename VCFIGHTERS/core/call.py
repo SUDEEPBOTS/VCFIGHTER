@@ -90,6 +90,7 @@ class VCCall:
         self._instances: dict[str, PyTgCalls] = {}
         self._loop_data: dict[int, tuple[str, bool]] = {}
         self._active_ub: dict[int, str] = {}
+        self._last_error: str = ""
         log.info("⚙️ VCCall manager initialized")
 
     async def start(self):
@@ -196,6 +197,7 @@ class VCCall:
             return True
 
         except Exception as e:
+            self._last_error = str(e)
             log.error(f"❌ Play failed → chat {chat_id}: {e}")
             return False
 
@@ -220,6 +222,26 @@ class VCCall:
         log.info(f"🔄 Replacing audio → chat {chat_id}")
         self._loop_data.pop(chat_id, None)
         return await self.play_loop(chat_id, new_file, session)
+
+    async def pause(self, chat_id: int) -> bool:
+        session = self._active_ub.get(chat_id)
+        pytg    = self._get_instance(session)
+        if pytg:
+            try:
+                return await pytg.pause(chat_id)
+            except Exception as e:
+                log.warning(f"⚠️ pause error: {e}")
+        return False
+
+    async def resume(self, chat_id: int) -> bool:
+        session = self._active_ub.get(chat_id)
+        pytg    = self._get_instance(session)
+        if pytg:
+            try:
+                return await pytg.resume(chat_id)
+            except Exception as e:
+                log.warning(f"⚠️ resume error: {e}")
+        return False
 
     async def stop(self, chat_id: int, leave_vc: bool = True):
         self._loop_data.pop(chat_id, None)
@@ -258,6 +280,7 @@ class VCCall:
 
     def _resolve(self, session: Optional[str]) -> tuple[Optional[PyTgCalls], str]:
         if not self._instances:
+            self._last_error = "No active userbot sessions in PyTgCalls"
             log.error("❌ No PyTgCalls instances available")
             return None, ""
         if session and session in self._instances:
